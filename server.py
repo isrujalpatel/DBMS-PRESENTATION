@@ -13,6 +13,7 @@ DB_CONFIG = {
     'user': os.getenv('MYSQLUSER'),
     'password': os.getenv('MYSQLPASSWORD'),
     'database': os.getenv('MYSQLDATABASE'),
+    'autocommit': True
 }
 
 # ✅ Always create fresh connection (prevents crash)
@@ -118,5 +119,5 @@ def split_sql(sql):
 
 # ✅ Railway PORT fix
 if __name__ == '__main__':
-    PORT = int(os.environ.get("PORT", 3000))
+    PORT = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=PORT)
