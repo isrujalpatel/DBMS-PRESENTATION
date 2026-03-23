@@ -6,21 +6,31 @@ import os, re
 app = Flask(__name__, static_folder='.')
 CORS(app)
 
-# ✅ Railway MySQL Config (AUTO from environment)
+# ✅ Railway MySQL Config
 DB_CONFIG = {
     'host': os.getenv('MYSQLHOST'),
     'port': int(os.getenv('MYSQLPORT', 3306)),
     'user': os.getenv('MYSQLUSER'),
     'password': os.getenv('MYSQLPASSWORD'),
     'database': os.getenv('MYSQLDATABASE'),
-    'autocommit': True
 }
 
+# ✅ Always create fresh connection (prevents crash)
 def get_connection(database=None):
     cfg = DB_CONFIG.copy()
     if database:
         cfg['database'] = database
-    return mysql.connector.connect(**cfg)
+
+    conn = mysql.connector.connect(
+        **cfg,
+        connection_timeout=10,
+        autocommit=True
+    )
+
+    # Auto reconnect if needed
+    conn.ping(reconnect=True, attempts=3, delay=2)
+
+    return conn
 
 # Serve frontend
 @app.route('/')
@@ -37,7 +47,7 @@ def ping():
     except Exception as e:
         return jsonify({'connected': False, 'error': str(e)})
 
-# Run SQL queries
+# Execute SQL
 @app.route('/api/query', methods=['POST'])
 def run_query():
     body = request.get_json()
@@ -48,6 +58,9 @@ def run_query():
 
     statements = split_sql(sql)
     results = []
+
+    conn = None
+    cursor = None
 
     try:
         conn = get_connection()
@@ -61,6 +74,7 @@ def run_query():
             try:
                 cursor.execute(stmt)
 
+                # SELECT queries
                 if cursor.description:
                     cols = [col[0] for col in cursor.description]
                     rows = cursor.fetchall()
@@ -71,6 +85,7 @@ def run_query():
                         'rows': [[str(v) if v is not None else 'NULL' for v in row] for row in rows],
                         'rowCount': len(rows)
                     })
+
                 else:
                     results.append({
                         'type': 'OK',
@@ -83,21 +98,25 @@ def run_query():
                     'message': str(e)
                 })
 
-        cursor.close()
-        conn.close()
         return jsonify({'success': True, 'results': results})
 
     except Exception as e:
         return jsonify({'error': True, 'message': str(e)})
 
-# Split SQL
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+# Split SQL safely
 def split_sql(sql):
     sql = re.sub(r'DELIMITER\s+//\s*', '', sql, flags=re.IGNORECASE)
     sql = re.sub(r'DELIMITER\s+;\s*', '', sql, flags=re.IGNORECASE)
     sql = sql.replace('//', ';')
     return [s.strip() for s in sql.split(';') if s.strip()]
 
-# ✅ Railway PORT FIX
+# ✅ Railway PORT fix
 if __name__ == '__main__':
     PORT = int(os.environ.get("PORT", 3000))
     app.run(host='0.0.0.0', port=PORT)
