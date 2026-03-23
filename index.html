@@ -1,0 +1,1307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OPD Token System — MySQL Query Runner</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy:    #0B2447;
+    --navy2:   #071A32;
+    --teal:    #19A7CE;
+    --teal2:   #0e7fa0;
+    --cyan:    #A5F3FC;
+    --green:   #10B981;
+    --amber:   #F59E0B;
+    --red:     #EF4444;
+    --purple:  #8B5CF6;
+    --bg:      #060F1E;
+    --surface: #0D1B2E;
+    --surface2:#132338;
+    --border:  #1E3A5F;
+    --text:    #E2E8F0;
+    --muted:   #64748B;
+    --code-bg: #040D18;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── BACKGROUND GRID ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.18;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .glow-orb {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(120px);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .glow-orb-1 { width: 500px; height: 500px; background: rgba(25,167,206,0.12); top: -100px; left: -100px; }
+  .glow-orb-2 { width: 400px; height: 400px; background: rgba(139,92,246,0.08); bottom: 100px; right: -50px; }
+
+  /* ── HEADER ── */
+  header {
+    position: relative; z-index: 10;
+    padding: 24px 32px 0;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    background: rgba(6,15,30,0.8);
+    backdrop-filter: blur(12px);
+  }
+
+  .logo-area { display: flex; align-items: center; gap: 14px; }
+
+  .logo-icon {
+    width: 44px; height: 44px;
+    background: linear-gradient(135deg, var(--teal), var(--purple));
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+  }
+
+  .logo-text h1 {
+    font-size: 18px; font-weight: 800; letter-spacing: -0.5px;
+    color: var(--text);
+  }
+  .logo-text p { font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+
+  .header-badges { display: flex; gap: 8px; padding-bottom: 24px; }
+  .badge {
+    padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+    border: 1px solid;
+  }
+  .badge-teal  { color: var(--teal);   border-color: rgba(25,167,206,0.3);  background: rgba(25,167,206,0.08); }
+  .badge-green { color: var(--green);  border-color: rgba(16,185,129,0.3);  background: rgba(16,185,129,0.08); }
+  .badge-amber { color: var(--amber);  border-color: rgba(245,158,11,0.3);  background: rgba(245,158,11,0.08); }
+  .badge-conn  {
+    display:flex; align-items:center; gap:6px; cursor:pointer; transition: all 0.2s;
+    padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 700;
+    font-family: 'JetBrains Mono', monospace; border: 1px solid;
+  }
+  .badge-conn.online  { color:var(--green); border-color:rgba(16,185,129,0.3); background:rgba(16,185,129,0.08); }
+  .badge-conn.offline { color:var(--red);   border-color:rgba(239,68,68,0.3);  background:rgba(239,68,68,0.08); }
+  .badge-conn.checking{ color:var(--amber); border-color:rgba(245,158,11,0.3); background:rgba(245,158,11,0.08); }
+  .conn-led { width:7px;height:7px;border-radius:50%;background:currentColor; }
+  .badge-conn.online .conn-led { animation:connpulse 2s infinite; }
+  @keyframes connpulse{0%,100%{opacity:1}50%{opacity:0.35}}
+
+  /* ── LAYOUT ── */
+  .container {
+    position: relative; z-index: 5;
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    height: calc(100vh - 89px);
+  }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+
+  .sidebar-title {
+    padding: 18px 20px 12px;
+    font-size: 10px; font-weight: 700; letter-spacing: 2px;
+    color: var(--muted); text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .query-list {
+    overflow-y: auto; flex: 1;
+    padding: 10px 10px;
+  }
+
+  .query-list::-webkit-scrollbar { width: 4px; }
+  .query-list::-webkit-scrollbar-track { background: transparent; }
+  .query-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .query-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.18s;
+    border: 1px solid transparent;
+    margin-bottom: 4px;
+    position: relative;
+  }
+  .query-item:hover { background: var(--surface2); border-color: var(--border); }
+  .query-item.active {
+    background: rgba(25,167,206,0.1);
+    border-color: rgba(25,167,206,0.35);
+  }
+  .query-item.active::before {
+    content: '';
+    position: absolute; left: 0; top: 6px; bottom: 6px;
+    width: 3px; background: var(--teal); border-radius: 0 3px 3px 0;
+  }
+  .query-item.done .q-num { background: rgba(16,185,129,0.2); color: var(--green); border-color: rgba(16,185,129,0.3); }
+
+  .q-num {
+    min-width: 32px; height: 22px;
+    background: rgba(25,167,206,0.12);
+    border: 1px solid rgba(25,167,206,0.2);
+    border-radius: 5px;
+    font-size: 9px; font-weight: 700;
+    color: var(--teal);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    margin-top: 1px;
+  }
+
+  .q-info { flex: 1; min-width: 0; }
+  .q-title { font-size: 12px; font-weight: 700; color: var(--text); line-height: 1.3; }
+  .q-tag {
+    display: inline-block; margin-top: 4px;
+    padding: 2px 7px; border-radius: 3px;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.5px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .tag-ddl    { background: rgba(139,92,246,0.15); color: #A78BFA; }
+  .tag-dml    { background: rgba(245,158,11,0.15); color: var(--amber); }
+  .tag-dql    { background: rgba(25,167,206,0.15); color: var(--teal); }
+  .tag-join   { background: rgba(16,185,129,0.15); color: var(--green); }
+  .tag-sub    { background: rgba(239,68,68,0.15);  color: #FCA5A5; }
+  .tag-view   { background: rgba(6,182,212,0.15);  color: #67E8F9; }
+  .tag-idx    { background: rgba(249,115,22,0.15); color: #FDBA74; }
+  .tag-proc   { background: rgba(236,72,153,0.15); color: #F9A8D4; }
+  .tag-trig   { background: rgba(234,179,8,0.15);  color: #FDE047; }
+
+  .sidebar-footer {
+    padding: 14px;
+    border-top: 1px solid var(--border);
+  }
+
+  .run-all-btn {
+    width: 100%;
+    padding: 12px;
+    background: linear-gradient(135deg, var(--teal), var(--teal2));
+    color: var(--navy2);
+    font-family: 'Syne', sans-serif;
+    font-size: 13px; font-weight: 800;
+    border: none; border-radius: 8px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    transition: all 0.2s;
+    letter-spacing: 0.3px;
+  }
+  .run-all-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(25,167,206,0.35); }
+  .run-all-btn:active { transform: translateY(0); }
+  .run-all-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  /* ── MAIN PANEL ── */
+  .main {
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── QUERY EDITOR ── */
+  .editor-panel {
+    flex: 0 0 auto;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .panel-title {
+    font-size: 12px; font-weight: 700; letter-spacing: 1.5px;
+    color: var(--muted); text-transform: uppercase;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .btn-run {
+    padding: 7px 18px;
+    background: rgba(25,167,206,0.15);
+    border: 1px solid rgba(25,167,206,0.4);
+    color: var(--teal);
+    font-family: 'Syne', sans-serif;
+    font-size: 12px; font-weight: 700;
+    border-radius: 6px; cursor: pointer;
+    transition: all 0.18s;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .btn-run:hover { background: rgba(25,167,206,0.25); border-color: var(--teal); }
+
+  .code-editor {
+    background: var(--code-bg);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: #A5F3FC;
+    padding: 16px 20px;
+    width: 100%;
+    height: 220px;
+    border: none;
+    outline: none;
+    resize: none;
+    line-height: 1.7;
+    overflow-y: auto;
+  }
+  .code-editor::-webkit-scrollbar { width: 4px; }
+  .code-editor::-webkit-scrollbar-thumb { background: var(--border); }
+
+  /* ── OUTPUT PANEL ── */
+  .output-panel { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+
+  .output-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .output-status {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; font-family: 'JetBrains Mono', monospace;
+  }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+  .status-dot.running { background: var(--amber); animation: pulse 1s infinite; }
+  .status-dot.success { background: var(--green); }
+  .status-dot.error   { background: var(--red); }
+
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  .output-body {
+    flex: 1; overflow-y: auto;
+    padding: 16px 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+  }
+  .output-body::-webkit-scrollbar { width: 6px; }
+  .output-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .output-placeholder {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; gap: 12px; color: var(--muted);
+  }
+  .output-placeholder .big-icon { font-size: 48px; opacity: 0.4; }
+  .output-placeholder p { font-size: 13px; }
+
+  /* ── RESULT BLOCKS ── */
+  .result-block { margin-bottom: 24px; }
+
+  .result-label {
+    font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+    color: var(--muted); text-transform: uppercase;
+    margin-bottom: 8px; display: flex; align-items: center; gap: 8px;
+  }
+  .result-label::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+
+  .result-success { color: var(--green); font-size: 13px; line-height: 1.7; }
+  .result-error   { color: var(--red);   font-size: 13px; line-height: 1.7; }
+  .result-info    { color: var(--cyan);  font-size: 12px; line-height: 1.7; }
+
+  /* ── TABLE OUTPUT ── */
+  .result-table-wrap {
+    overflow-x: auto; border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+  .result-table-wrap::-webkit-scrollbar { height: 4px; }
+  .result-table-wrap::-webkit-scrollbar-thumb { background: var(--border); }
+
+  .result-table {
+    width: 100%; border-collapse: collapse;
+    font-size: 12px;
+  }
+  .result-table thead tr {
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+  }
+  .result-table thead th {
+    padding: 8px 14px; text-align: left;
+    color: var(--teal); font-weight: 700; white-space: nowrap;
+    font-size: 11px; letter-spacing: 0.5px;
+  }
+  .result-table tbody tr {
+    border-bottom: 1px solid rgba(30,58,95,0.5);
+    transition: background 0.1s;
+  }
+  .result-table tbody tr:hover { background: var(--surface2); }
+  .result-table tbody tr:last-child { border-bottom: none; }
+  .result-table td {
+    padding: 8px 14px; color: var(--text); white-space: nowrap;
+  }
+
+  .rows-info {
+    margin-top: 6px; font-size: 11px; color: var(--muted);
+    text-align: right;
+  }
+
+  /* ── SECTION DIVIDER in output ── */
+  .section-divider {
+    display: flex; align-items: center; gap: 10px;
+    margin: 20px 0 14px;
+  }
+  .section-divider .sd-label {
+    font-size: 13px; font-weight: 700; color: var(--teal);
+    white-space: nowrap; font-family: 'Syne', sans-serif;
+  }
+  .section-divider .sd-line { flex: 1; height: 1px; background: var(--border); }
+  .section-divider .sd-badge {
+    padding: 3px 10px; border-radius: 20px;
+    font-size: 10px; font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    background: rgba(25,167,206,0.1); color: var(--teal);
+    border: 1px solid rgba(25,167,206,0.25);
+  }
+
+  /* ── LOADING ── */
+  .spinner {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid rgba(25,167,206,0.3);
+    border-top-color: var(--teal);
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── PROGRESS BAR ── */
+  .progress-bar-wrap {
+    height: 3px; background: var(--border);
+    border-radius: 2px; overflow: hidden; margin-top: 8px;
+  }
+  .progress-bar {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, var(--teal), var(--purple));
+    transition: width 0.4s ease;
+    border-radius: 2px;
+  }
+</style>
+</head>
+<body>
+
+<div class="glow-orb glow-orb-1"></div>
+<div class="glow-orb glow-orb-2"></div>
+
+<!-- HEADER -->
+<header>
+  <div class="logo-area">
+    <div class="logo-icon">🏥</div>
+    <div class="logo-text">
+      <h1>OPD Token System</h1>
+      <p>MySQL Query Runner · DBMS Lab Project</p>
+    </div>
+  </div>
+  <div class="header-badges">
+    <span class="badge badge-teal">5 Tables</span>
+    <span class="badge badge-green">13 Queries</span>
+    <span class="badge badge-amber">MySQL / SQL Workbench</span>
+    <span class="badge-conn checking" id="connBadge" onclick="checkConn()" title="Click to re-check">
+      <span class="conn-led"></span>
+      <span id="connText">Checking...</span>
+    </span>
+  </div>
+</header>
+
+<!-- MAIN LAYOUT -->
+<div class="container">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-title">📋 Query Library</div>
+    <div class="query-list" id="queryList"></div>
+    <div class="sidebar-footer">
+      <div class="progress-bar-wrap" id="progressWrap" style="display:none">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+      <button class="run-all-btn" id="runAllBtn" onclick="runAllQueries()">
+        <span>▶▶</span> Run All 13 Queries
+      </button>
+    </div>
+  </aside>
+
+  <!-- MAIN EDITOR + OUTPUT -->
+  <div class="main">
+
+    <!-- EDITOR -->
+    <div class="editor-panel">
+      <div class="panel-header">
+        <span class="panel-title" id="editorTitle">⚡ Query Editor</span>
+        <button class="btn-run" id="runBtn" onclick="runSelectedQuery()">
+          <span>▶</span> Run Query
+        </button>
+      </div>
+      <textarea class="code-editor" id="codeEditor" spellcheck="false" placeholder="-- Select a query from the sidebar or type your own SQL here..."></textarea>
+    </div>
+
+    <!-- OUTPUT -->
+    <div class="output-panel">
+      <div class="output-header">
+        <span class="panel-title">Output</span>
+        <div class="output-status">
+          <div class="status-dot" id="statusDot"></div>
+          <span id="statusText" style="color:var(--muted)">Ready</span>
+        </div>
+      </div>
+      <div class="output-body" id="outputBody">
+        <div class="output-placeholder" id="placeholder">
+          <div class="big-icon">🗄️</div>
+          <p>Select a query from the sidebar and click <strong style="color:var(--teal)">Run Query</strong></p>
+          <p style="font-size:11px">or click <strong style="color:var(--teal)">Run All 13 Queries</strong> to execute everything</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────
+// ALL 13 QUERIES
+// ─────────────────────────────────────────────────────────────
+const QUERIES = [
+  {
+    id: 1,
+    title: "CREATE DATABASE & Tables",
+    tag: "DDL",
+    desc: "Creates the opd_system database and all 5 tables with primary keys, foreign keys and constraints.",
+    sql: `-- QUERY 1: DDL — CREATE DATABASE & All 5 Tables
+DROP DATABASE IF EXISTS opd_system;
+CREATE DATABASE opd_system;
+USE opd_system;
+
+CREATE TABLE departments (
+    dept_id    INT PRIMARY KEY AUTO_INCREMENT,
+    dept_name  VARCHAR(100) NOT NULL,
+    floor_no   INT,
+    room_no    VARCHAR(10),
+    contact    VARCHAR(15)
+);
+
+CREATE TABLE doctors (
+    doctor_id       INT PRIMARY KEY AUTO_INCREMENT,
+    dept_id         INT NOT NULL,
+    name            VARCHAR(100) NOT NULL,
+    specialization  VARCHAR(100),
+    max_tokens_day  INT DEFAULT 50,
+    FOREIGN KEY (dept_id) REFERENCES departments(dept_id)
+);
+
+CREATE TABLE patients (
+    patient_id  INT PRIMARY KEY AUTO_INCREMENT,
+    name        VARCHAR(100) NOT NULL,
+    dob         DATE,
+    gender      ENUM('M','F','Other'),
+    phone       VARCHAR(15) UNIQUE,
+    address     TEXT,
+    blood_group VARCHAR(5) DEFAULT 'Unknown'
+);
+
+CREATE TABLE tokens (
+    token_id    INT PRIMARY KEY AUTO_INCREMENT,
+    patient_id  INT NOT NULL,
+    doctor_id   INT NOT NULL,
+    token_no    INT NOT NULL,
+    issue_time  DATETIME DEFAULT NOW(),
+    status      ENUM('Waiting','Called','Done','Absent') DEFAULT 'Waiting',
+    wait_min    INT DEFAULT 0,
+    is_deleted  TINYINT DEFAULT 0,
+    FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
+    FOREIGN KEY (doctor_id)  REFERENCES doctors(doctor_id)
+);
+
+CREATE TABLE appointments (
+    appt_id     INT PRIMARY KEY AUTO_INCREMENT,
+    token_id    INT NOT NULL,
+    patient_id  INT NOT NULL,
+    doctor_id   INT NOT NULL,
+    appt_time   DATETIME,
+    reason      VARCHAR(255),
+    notes       TEXT,
+    FOREIGN KEY (token_id)   REFERENCES tokens(token_id),
+    FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
+    FOREIGN KEY (doctor_id)  REFERENCES doctors(doctor_id)
+);
+
+SHOW TABLES;`
+  },
+  {
+    id: 2,
+    title: "ALTER TABLE",
+    tag: "DDL",
+    desc: "Demonstrates ALTER TABLE to add/modify columns after table creation.",
+    sql: `-- QUERY 2: DDL — ALTER TABLE
+USE opd_system;
+
+ALTER TABLE patients ADD COLUMN emergency_contact VARCHAR(15);
+ALTER TABLE doctors  ADD COLUMN consultation_fee  INT DEFAULT 300;
+ALTER TABLE tokens   ADD COLUMN priority ENUM('Normal','Urgent') DEFAULT 'Normal';
+
+-- Verify changes
+DESCRIBE patients;`
+  },
+  {
+    id: 3,
+    title: "INSERT Sample Data",
+    tag: "DML",
+    desc: "Inserts realistic sample data into all 5 tables — departments, doctors, patients, tokens and appointments.",
+    sql: `-- QUERY 3: DML — INSERT data into all 5 tables
+USE opd_system;
+
+INSERT INTO departments (dept_name, floor_no, room_no, contact) VALUES
+    ('Cardiology',       2, '201', '9900112233'),
+    ('Orthopedics',      3, '305', '9900112244'),
+    ('General Medicine', 1, '101', '9900112255'),
+    ('Neurology',        4, '401', '9900112266'),
+    ('Pediatrics',       1, '105', '9900112277');
+
+INSERT INTO doctors (dept_id, name, specialization, max_tokens_day, consultation_fee) VALUES
+    (1, 'Dr. Priya Shah',   'Cardiologist',        40, 800),
+    (2, 'Dr. Rohit Mehta',  'Orthopaedic Surgeon', 35, 600),
+    (3, 'Dr. Anjali Desai', 'General Physician',   60, 300),
+    (4, 'Dr. Sameer Joshi', 'Neurologist',         30, 700),
+    (5, 'Dr. Kavita Patel', 'Paediatrician',       50, 400);
+
+INSERT INTO patients (name, dob, gender, phone, address, blood_group) VALUES
+    ('Raj Patel',     '1985-06-14', 'M', '9876501234', 'Anand, Gujarat',    'B+'),
+    ('Sunita Rao',    '1992-11-02', 'F', '9876509876', 'Vadodara, Gujarat', 'O+'),
+    ('Kiran Shah',    '1970-03-28', 'M', '9876507654', 'Surat, Gujarat',    'A+'),
+    ('Meera Joshi',   '2000-07-19', 'F', '9876503333', 'Rajkot, Gujarat',   'AB+'),
+    ('Arjun Nair',    '1955-01-05', 'M', '9876504444', 'Gandhinagar',       'O-'),
+    ('Fatima Sheikh', '1988-09-30', 'F', '9876505555', 'Bharuch, Gujarat',  'B-'),
+    ('Deepak Verma',  '1999-12-12', 'M', '9876506666', 'Nadiad, Gujarat',   'A-');
+
+INSERT INTO tokens (patient_id, doctor_id, token_no, issue_time, status, wait_min) VALUES
+    (1, 1, 101, NOW() - INTERVAL 60 MINUTE, 'Done',    55),
+    (2, 2, 201, NOW() - INTERVAL 45 MINUTE, 'Done',    40),
+    (3, 1, 102, NOW() - INTERVAL 30 MINUTE, 'Called',  28),
+    (4, 3, 301, NOW() - INTERVAL 20 MINUTE, 'Waiting',  0),
+    (5, 3, 302, NOW() - INTERVAL 15 MINUTE, 'Waiting',  0),
+    (6, 4, 401, NOW() - INTERVAL 10 MINUTE, 'Waiting',  0),
+    (7, 5, 501, NOW() - INTERVAL  5 MINUTE, 'Waiting',  0);
+
+INSERT INTO appointments (token_id, patient_id, doctor_id, appt_time, reason, notes) VALUES
+    (1, 1, 1, NOW() - INTERVAL 55 MINUTE, 'Chest pain follow-up', 'ECG required'),
+    (2, 2, 2, NOW() - INTERVAL 40 MINUTE, 'Knee pain',            'X-ray advised'),
+    (3, 3, 1, NOW() - INTERVAL 25 MINUTE, 'BP monitoring',        'Medication review');
+
+SELECT 'Data inserted into all 5 tables ✓' AS status;
+SELECT COUNT(*) AS departments FROM departments;
+SELECT COUNT(*) AS doctors     FROM doctors;
+SELECT COUNT(*) AS patients    FROM patients;
+SELECT COUNT(*) AS tokens      FROM tokens;
+SELECT COUNT(*) AS appointments FROM appointments;`
+  },
+  {
+    id: 4,
+    title: "UPDATE Records",
+    tag: "DML",
+    desc: "Updates token status, calculates wait time, and modifies doctor details.",
+    sql: `-- QUERY 4: DML — UPDATE
+USE opd_system;
+
+-- Update token status to Called
+UPDATE tokens
+SET    status   = 'Called',
+       wait_min = TIMESTAMPDIFF(MINUTE, issue_time, NOW())
+WHERE  token_id = 4;
+
+-- Mark as Done after consultation
+UPDATE tokens
+SET    status = 'Done'
+WHERE  token_id = 4 AND status = 'Called';
+
+-- Update doctor's max tokens
+UPDATE doctors
+SET    max_tokens_day = 45,
+       consultation_fee = 850
+WHERE  doctor_id = 1;
+
+-- Verify updates
+SELECT token_id, token_no, status, wait_min FROM tokens WHERE token_id = 4;
+SELECT doctor_id, name, max_tokens_day, consultation_fee FROM doctors WHERE doctor_id = 1;`
+  },
+  {
+    id: 5,
+    title: "DELETE Records",
+    tag: "DML",
+    desc: "Demonstrates DELETE with conditions and soft-delete pattern.",
+    sql: `-- QUERY 5: DML — DELETE
+USE opd_system;
+
+-- Insert a test token to delete
+INSERT INTO tokens (patient_id, doctor_id, token_no, status)
+VALUES (7, 5, 999, 'Absent');
+
+-- Hard delete: remove absent/test token
+DELETE FROM tokens
+WHERE  status = 'Absent' AND token_no = 999;
+
+-- Soft delete: mark as deleted instead of removing
+UPDATE tokens
+SET    is_deleted = 1
+WHERE  token_id = 7;
+
+-- Verify: soft-deleted token still exists but is hidden from live queries
+SELECT token_id, token_no, status, is_deleted FROM tokens ORDER BY token_id;`
+  },
+  {
+    id: 6,
+    title: "SELECT + WHERE + ORDER BY",
+    tag: "DQL",
+    desc: "Retrieves today's OPD queue using multi-table JOINs, WHERE filters and ORDER BY.",
+    sql: `-- QUERY 6: DQL — SELECT with WHERE, ORDER BY, LIKE
+USE opd_system;
+
+-- Today's full OPD queue
+SELECT
+    t.token_no,
+    p.name        AS patient_name,
+    p.phone,
+    p.blood_group,
+    d.name        AS doctor_name,
+    dep.dept_name,
+    t.issue_time,
+    t.status,
+    t.wait_min    AS wait_minutes
+FROM   tokens t
+JOIN   patients    p   ON t.patient_id = p.patient_id
+JOIN   doctors     d   ON t.doctor_id  = d.doctor_id
+JOIN   departments dep ON d.dept_id    = dep.dept_id
+WHERE  DATE(t.issue_time) = CURDATE()
+  AND  t.is_deleted = 0
+ORDER  BY t.token_no ASC;
+
+-- Search patients by name (LIKE)
+SELECT patient_id, name, phone, blood_group
+FROM   patients
+WHERE  name LIKE '%a%'
+ORDER  BY name;`
+  },
+  {
+    id: 7,
+    title: "GROUP BY + HAVING + Aggregates",
+    tag: "DQL",
+    desc: "Doctor-wise token statistics using COUNT, SUM, AVG, MAX with GROUP BY and HAVING.",
+    sql: `-- QUERY 7: DQL — GROUP BY + HAVING + Aggregate Functions
+USE opd_system;
+
+-- Doctor-wise OPD stats
+SELECT
+    d.name               AS doctor_name,
+    dep.dept_name,
+    COUNT(t.token_id)    AS total_tokens,
+    SUM(CASE WHEN t.status = 'Done'    THEN 1 ELSE 0 END) AS done,
+    SUM(CASE WHEN t.status = 'Waiting' THEN 1 ELSE 0 END) AS waiting,
+    SUM(CASE WHEN t.status = 'Called'  THEN 1 ELSE 0 END) AS called,
+    ROUND(AVG(t.wait_min), 1)  AS avg_wait_min,
+    MAX(t.wait_min)            AS max_wait_min
+FROM   tokens t
+JOIN   doctors     d   ON t.doctor_id = d.doctor_id
+JOIN   departments dep ON d.dept_id   = dep.dept_id
+GROUP  BY d.doctor_id, d.name, dep.dept_name
+HAVING COUNT(t.token_id) >= 1
+ORDER  BY total_tokens DESC;
+
+-- Busiest hours analysis
+SELECT
+    HOUR(issue_time)  AS hour_of_day,
+    COUNT(*)          AS tokens_issued
+FROM   tokens
+GROUP  BY HOUR(issue_time)
+ORDER  BY tokens_issued DESC;`
+  },
+  {
+    id: 8,
+    title: "JOINs — INNER, LEFT, RIGHT",
+    tag: "JOIN",
+    desc: "Demonstrates all three JOIN types on the OPD data.",
+    sql: `-- QUERY 8: All JOIN Types
+USE opd_system;
+
+-- INNER JOIN: Only patients who have tokens today
+SELECT p.name, t.token_no, t.status, d.name AS doctor
+FROM   patients p
+INNER JOIN tokens  t ON p.patient_id = t.patient_id
+INNER JOIN doctors d ON t.doctor_id  = d.doctor_id
+WHERE  DATE(t.issue_time) = CURDATE();
+
+-- LEFT JOIN: All patients, even those with no token today
+SELECT
+    p.name,
+    COALESCE(CAST(t.token_no AS CHAR), 'No Token') AS token_no,
+    COALESCE(t.status, '—') AS status
+FROM   patients p
+LEFT JOIN tokens t ON p.patient_id = t.patient_id
+                  AND DATE(t.issue_time) = CURDATE()
+                  AND t.is_deleted = 0;
+
+-- RIGHT JOIN: All doctors, including those with 0 tokens
+SELECT
+    d.name            AS doctor_name,
+    dep.dept_name,
+    COUNT(t.token_id) AS tokens_today
+FROM   tokens t
+RIGHT JOIN doctors     d   ON t.doctor_id = d.doctor_id
+                          AND DATE(t.issue_time) = CURDATE()
+LEFT  JOIN departments dep ON d.dept_id   = dep.dept_id
+GROUP  BY d.doctor_id, d.name, dep.dept_name
+ORDER  BY tokens_today DESC;`
+  },
+  {
+    id: 9,
+    title: "Subqueries",
+    tag: "Subquery",
+    desc: "Scalar, IN and correlated subqueries for advanced OPD data analysis.",
+    sql: `-- QUERY 9: Subqueries (Scalar, IN, Correlated)
+USE opd_system;
+
+-- Scalar subquery: Patients who waited above average
+SELECT p.name, t.token_no, t.wait_min
+FROM   tokens t
+JOIN   patients p ON t.patient_id = p.patient_id
+WHERE  t.wait_min > (
+    SELECT AVG(wait_min) FROM tokens
+    WHERE  DATE(issue_time) = CURDATE()
+)
+ORDER BY t.wait_min DESC;
+
+-- IN subquery: Patients who visited Cardiology
+SELECT DISTINCT p.name, p.phone, p.blood_group
+FROM   patients p
+WHERE  p.patient_id IN (
+    SELECT t.patient_id FROM tokens t
+    JOIN   doctors d     ON t.doctor_id = d.doctor_id
+    JOIN   departments dep ON d.dept_id = dep.dept_id
+    WHERE  dep.dept_name = 'Cardiology'
+);
+
+-- Correlated subquery: Doctors above dept avg max_tokens
+SELECT d.name, d.specialization, d.max_tokens_day
+FROM   doctors d
+WHERE  d.max_tokens_day > (
+    SELECT AVG(d2.max_tokens_day)
+    FROM   doctors d2
+    WHERE  d2.dept_id = d.dept_id
+);`
+  },
+  {
+    id: 10,
+    title: "CREATE VIEW",
+    tag: "View",
+    desc: "Creates two views: live OPD queue and department-wise summary, then queries them.",
+    sql: `-- QUERY 10: CREATE VIEW
+USE opd_system;
+
+-- View 1: Today's live OPD queue
+CREATE OR REPLACE VIEW vw_today_queue AS
+SELECT
+    t.token_id,
+    t.token_no,
+    p.name        AS patient_name,
+    p.phone,
+    d.name        AS doctor_name,
+    dep.dept_name,
+    t.issue_time,
+    t.status,
+    t.wait_min
+FROM   tokens t
+JOIN   patients    p   ON t.patient_id = p.patient_id
+JOIN   doctors     d   ON t.doctor_id  = d.doctor_id
+JOIN   departments dep ON d.dept_id    = dep.dept_id
+WHERE  DATE(t.issue_time) = CURDATE()
+  AND  t.is_deleted = 0;
+
+-- View 2: Department summary
+CREATE OR REPLACE VIEW vw_dept_summary AS
+SELECT
+    dep.dept_name,
+    COUNT(t.token_id)  AS total_tokens,
+    ROUND(AVG(t.wait_min), 1) AS avg_wait_min,
+    SUM(CASE WHEN t.status='Done'    THEN 1 ELSE 0 END) AS completed,
+    SUM(CASE WHEN t.status='Waiting' THEN 1 ELSE 0 END) AS pending
+FROM   tokens t
+JOIN   doctors d     ON t.doctor_id = d.doctor_id
+JOIN   departments dep ON d.dept_id = dep.dept_id
+GROUP  BY dep.dept_name;
+
+-- Query both views
+SELECT * FROM vw_today_queue  ORDER BY token_no;
+SELECT * FROM vw_dept_summary ORDER BY total_tokens DESC;`
+  },
+  {
+    id: 11,
+    title: "CREATE INDEX + EXPLAIN",
+    tag: "Index",
+    desc: "Shows performance before and after creating indexes using EXPLAIN.",
+    sql: `-- QUERY 11: CREATE INDEX + EXPLAIN (Performance Analysis)
+USE opd_system;
+
+-- BEFORE index: Full table scan
+EXPLAIN SELECT * FROM tokens
+WHERE  DATE(issue_time) = CURDATE()
+  AND  status = 'Waiting';
+
+-- Create composite index
+CREATE INDEX idx_tokens_date_status
+    ON tokens(issue_time, status);
+
+-- Create unique index on patient phone
+CREATE UNIQUE INDEX idx_patient_phone
+    ON patients(phone);
+
+-- Create index for doctor daily lookups
+CREATE INDEX idx_doctor_date
+    ON tokens(doctor_id, issue_time);
+
+-- AFTER index: Range/Index scan (faster!)
+EXPLAIN SELECT * FROM tokens
+WHERE  DATE(issue_time) = CURDATE()
+  AND  status = 'Waiting';
+
+-- Show all indexes on tokens table
+SHOW INDEX FROM tokens;`
+  },
+  {
+    id: 12,
+    title: "Stored Procedure",
+    tag: "Procedure",
+    desc: "sp_issue_token procedure with business logic: checks daily limit, auto-assigns token number.",
+    sql: `-- QUERY 12: STORED PROCEDURE — sp_issue_token
+USE opd_system;
+
+DROP PROCEDURE IF EXISTS sp_issue_token;
+
+DELIMITER //
+
+CREATE PROCEDURE sp_issue_token(
+    IN  p_patient_id  INT,
+    IN  p_doctor_id   INT,
+    OUT p_token_no    INT,
+    OUT p_message     VARCHAR(200)
+)
+BEGIN
+    DECLARE v_max_tokens  INT;
+    DECLARE v_today_count INT;
+
+    SELECT max_tokens_day INTO v_max_tokens
+    FROM   doctors WHERE doctor_id = p_doctor_id;
+
+    SELECT COUNT(*) INTO v_today_count
+    FROM   tokens
+    WHERE  doctor_id = p_doctor_id
+      AND  DATE(issue_time) = CURDATE();
+
+    IF v_today_count >= v_max_tokens THEN
+        SET p_token_no = -1;
+        SET p_message  = 'Doctor is fully booked for today.';
+    ELSE
+        SET p_token_no = v_today_count + 1;
+        INSERT INTO tokens (patient_id, doctor_id, token_no)
+        VALUES (p_patient_id, p_doctor_id, p_token_no);
+        SET p_message = CONCAT('Token issued! Token No: ', p_token_no);
+    END IF;
+END //
+
+DELIMITER ;
+
+-- Call the procedure
+CALL sp_issue_token(5, 2, @token_no, @message);
+SELECT @token_no AS token_number, @message AS result_message;
+
+-- Call again for another patient
+CALL sp_issue_token(6, 3, @token_no, @message);
+SELECT @token_no AS token_number, @message AS result_message;`
+  },
+  {
+    id: 13,
+    title: "Triggers",
+    tag: "Trigger",
+    desc: "Two triggers: auto-calculates wait_min on status change & prevents duplicate active tokens.",
+    sql: `-- QUERY 13: TRIGGERS
+USE opd_system;
+
+DROP TRIGGER IF EXISTS trg_calc_wait_time;
+DROP TRIGGER IF EXISTS trg_no_duplicate_token;
+
+DELIMITER //
+
+-- Trigger 1: Auto-fill wait_min when token is Called
+CREATE TRIGGER trg_calc_wait_time
+BEFORE UPDATE ON tokens
+FOR EACH ROW
+BEGIN
+    IF NEW.status = 'Called' AND OLD.status = 'Waiting' THEN
+        SET NEW.wait_min =
+            TIMESTAMPDIFF(MINUTE, OLD.issue_time, NOW());
+    END IF;
+END //
+
+-- Trigger 2: Block duplicate active token for same patient+doctor
+CREATE TRIGGER trg_no_duplicate_token
+BEFORE INSERT ON tokens
+FOR EACH ROW
+BEGIN
+    DECLARE v_exists INT;
+    SELECT COUNT(*) INTO v_exists
+    FROM   tokens
+    WHERE  patient_id = NEW.patient_id
+      AND  doctor_id  = NEW.doctor_id
+      AND  DATE(issue_time) = CURDATE()
+      AND  status IN ('Waiting','Called');
+
+    IF v_exists > 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT =
+            'Patient already has an active token for this doctor today.';
+    END IF;
+END //
+
+DELIMITER ;
+
+-- Test Trigger 1: status → Called fills wait_min automatically
+UPDATE tokens SET status = 'Called' WHERE token_id = 5;
+SELECT token_id, status, wait_min FROM tokens WHERE token_id = 5;
+
+-- Test Trigger 2: Duplicate token attempt → should show error message
+INSERT INTO tokens (patient_id, doctor_id, token_no)
+VALUES (4, 3, 999);`
+  }
+];
+
+// ─────────────────────────────────────────────────────────────
+// QUERY METADATA
+// ─────────────────────────────────────────────────────────────
+const TAG_CLASS = {
+  DDL:'tag-ddl', DML:'tag-dml', DQL:'tag-dql',
+  JOIN:'tag-join', Subquery:'tag-sub', View:'tag-view',
+  Index:'tag-idx', Procedure:'tag-proc', Trigger:'tag-trig'
+};
+
+let activeQueryId = null;
+let doneQueries   = new Set();
+
+// ─────────────────────────────────────────────────────────────
+// BUILD SIDEBAR
+// ─────────────────────────────────────────────────────────────
+function buildSidebar() {
+  const list = document.getElementById('queryList');
+  list.innerHTML = '';
+  QUERIES.forEach(q => {
+    const div = document.createElement('div');
+    div.className = `query-item${doneQueries.has(q.id) ? ' done' : ''}`;
+    div.id = `qi-${q.id}`;
+    div.onclick = () => selectQuery(q.id);
+    div.innerHTML = `
+      <div class="q-num">${doneQueries.has(q.id) ? '✓' : `Q${q.id}`}</div>
+      <div class="q-info">
+        <div class="q-title">${q.title}</div>
+        <span class="q-tag ${TAG_CLASS[q.tag]}">${q.tag}</span>
+      </div>`;
+    list.appendChild(div);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// SELECT QUERY
+// ─────────────────────────────────────────────────────────────
+function selectQuery(id) {
+  activeQueryId = id;
+  const q = QUERIES.find(x => x.id === id);
+  document.getElementById('codeEditor').value = q.sql;
+  document.getElementById('editorTitle').textContent = `Q${q.id} · ${q.title}`;
+  document.querySelectorAll('.query-item').forEach(el => el.classList.remove('active'));
+  document.getElementById(`qi-${id}`).classList.add('active');
+}
+
+// ─────────────────────────────────────────────────────────────
+// RUN SINGLE QUERY VIA CLAUDE API
+// ─────────────────────────────────────────────────────────────
+async function runSelectedQuery() {
+  const sql = document.getElementById('codeEditor').value.trim();
+  if (!sql) return;
+  const q = QUERIES.find(x => x.id === activeQueryId);
+  setStatus('running', 'Executing…');
+  document.getElementById('placeholder').style.display = 'none';
+  document.getElementById('outputBody').innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;color:var(--muted);padding:20px 0">
+      <div class="spinner"></div>
+      <span>Running query against simulated MySQL OPD database…</span>
+    </div>`;
+  const html = await simulateQuery(sql, q);
+  document.getElementById('outputBody').innerHTML = html;
+  setStatus('success', 'Execution complete');
+  if (activeQueryId) {
+    doneQueries.add(activeQueryId);
+    buildSidebar();
+    document.getElementById(`qi-${activeQueryId}`).classList.add('active');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// RUN ALL QUERIES
+// ─────────────────────────────────────────────────────────────
+async function runAllQueries() {
+  const btn = document.getElementById('runAllBtn');
+  btn.disabled = true;
+  document.getElementById('progressWrap').style.display = 'block';
+  document.getElementById('placeholder').style.display = 'none';
+  document.getElementById('outputBody').innerHTML = '';
+  doneQueries.clear();
+  buildSidebar();
+
+  for (let i = 0; i < QUERIES.length; i++) {
+    const q = QUERIES[i];
+    selectQuery(q.id);
+    setStatus('running', `Running Q${q.id}: ${q.title}…`);
+    const pct = Math.round((i / QUERIES.length) * 100);
+    document.getElementById('progressBar').style.width = pct + '%';
+
+    const html = await simulateQuery(q.sql, q);
+    const block = document.createElement('div');
+    block.innerHTML = `
+      <div class="section-divider">
+        <div class="sd-label">Q${q.id} — ${q.title}</div>
+        <div class="sd-line"></div>
+        <div class="sd-badge">${q.tag}</div>
+      </div>
+      ${html}`;
+    document.getElementById('outputBody').appendChild(block);
+    block.scrollIntoView({ behavior: 'smooth', block: 'end' });
+
+    doneQueries.add(q.id);
+    buildSidebar();
+    document.getElementById(`qi-${q.id}`).classList.add('active');
+    await delay(300);
+  }
+
+  document.getElementById('progressBar').style.width = '100%';
+  setStatus('success', `All ${QUERIES.length} queries executed successfully ✓`);
+  btn.disabled = false;
+}
+
+// ─────────────────────────────────────────────────────────────
+// CALL LOCAL PYTHON SERVER → REAL MySQL EXECUTION
+// ─────────────────────────────────────────────────────────────
+const SERVER = 'http://localhost:3000';
+
+async function simulateQuery(sql, q) {
+  try {
+    const resp = await fetch(`${SERVER}/api/query`, {
+      method : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body   : JSON.stringify({ sql })
+    });
+
+    if (!resp.ok) throw new Error(`Server returned HTTP ${resp.status}`);
+
+    const data = await resp.json();
+
+    // Server returned a MySQL error (e.g. duplicate trigger, constraint fail)
+    if (data.error) {
+      return `<div class="result-block">
+        <div class="result-label">📋 ${q?.desc || 'Query Result'}</div>
+        <div style="margin-bottom:16px">
+          <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;
+               margin-bottom:6px;padding:4px 10px;background:var(--surface2);
+               border-radius:4px;border-left:3px solid var(--red)">
+            ⚠ MySQL Error
+          </div>
+          <div class="result-error">❌ ${escHtml(data.message || 'Unknown error')}</div>
+        </div>
+      </div>`;
+    }
+
+    // Convert server result format → renderResults format
+    const statements = (data.results || []).map((r, i) => {
+      if (r.type === 'SELECT') {
+        return {
+          sql_preview  : sql.trim().split('\n').filter(l => l.trim() && !l.trim().startsWith('--'))[i] || sql.trim().substring(0, 60),
+          type         : 'SELECT',
+          success      : true,
+          message      : `${r.rowCount} row(s) returned`,
+          columns      : r.columns || [],
+          rows         : r.rows    || [],
+          rows_affected: 0
+        };
+      } else if (r.type === 'ERROR') {
+        return {
+          sql_preview  : sql.trim().substring(0, 60),
+          type         : 'ERROR',
+          success      : false,
+          message      : r.message || 'Error',
+          columns:[], rows:[], rows_affected:0
+        };
+      } else {
+        return {
+          sql_preview  : sql.trim().split('\n').filter(l => l.trim() && !l.trim().startsWith('--'))[i] || sql.trim().substring(0, 60),
+          type         : 'DDL',
+          success      : true,
+          message      : r.message || 'Query OK',
+          columns:[], rows:[],
+          rows_affected: r.affectedRows || 0
+        };
+      }
+    });
+
+    return renderResults({ statements }, q);
+
+  } catch(e) {
+    // Server not running — show a helpful setup message
+    const isOffline = e.message.includes('fetch') || e.message.includes('Failed') || e.message.includes('NetworkError');
+    return `<div class="result-block">
+      <div class="result-label">📋 Connection Error</div>
+      <div style="padding:16px 18px;background:rgba(239,68,68,0.07);
+           border:1px solid rgba(239,68,68,0.25);border-radius:8px;
+           font-family:'JetBrains Mono',monospace;font-size:12px;
+           color:#fca5a5;line-height:2">
+        ${isOffline
+          ? `❌ Cannot reach local server at <b style="color:var(--red)">${SERVER}</b><br><br>
+             <span style="color:var(--muted)">To fix this, open a terminal and run:</span><br><br>
+             <span style="color:var(--cyan)">pip install flask flask-cors mysql-connector-python</span><br>
+             <span style="color:var(--cyan)">python server.py</span><br><br>
+             <span style="color:var(--muted)">Then refresh this page. You should see ✅ in the terminal.</span>`
+          : `❌ ${escHtml(e.message)}`
+        }
+      </div>
+    </div>`;
+  }
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;');
+}
+
+// ─────────────────────────────────────────────────────────────
+// RENDER RESULTS
+// ─────────────────────────────────────────────────────────────
+function renderResults(parsed, q) {
+  const stmts = parsed.statements || [];
+  if (!stmts.length) return `<div class="result-info">No output returned.</div>`;
+
+  let html = `<div class="result-block">
+    <div class="result-label">📋 ${q?.desc || 'Query Result'}</div>`;
+
+  stmts.forEach((stmt, i) => {
+    const preview = stmt.sql_preview || `Statement ${i+1}`;
+    html += `<div style="margin-bottom:16px">`;
+    html += `<div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-bottom:6px;padding:4px 10px;background:var(--surface2);border-radius:4px;border-left:3px solid ${stmt.success===false?'var(--red)':'var(--teal)'}">${preview}</div>`;
+
+    if (stmt.success === false) {
+      html += `<div class="result-error">⚠️ ${stmt.message || 'Error occurred'}</div>`;
+    } else if (stmt.columns && stmt.columns.length > 0 && stmt.rows && stmt.rows.length > 0) {
+      // Table output
+      html += `<div class="result-table-wrap"><table class="result-table"><thead><tr>`;
+      stmt.columns.forEach(c => { html += `<th>${c}</th>`; });
+      html += `</tr></thead><tbody>`;
+      stmt.rows.forEach(row => {
+        html += '<tr>';
+        row.forEach(cell => {
+          const cellStr = String(cell ?? '');
+          let color = '';
+          if (cellStr === 'Done')    color = 'color:var(--green)';
+          if (cellStr === 'Waiting') color = 'color:var(--amber)';
+          if (cellStr === 'Called')  color = 'color:var(--teal)';
+          if (cellStr === 'Absent')  color = 'color:var(--red)';
+          html += `<td style="${color}">${cellStr}</td>`;
+        });
+        html += '</tr>';
+      });
+      html += `</tbody></table></div>`;
+      html += `<div class="rows-info">${stmt.rows.length} row${stmt.rows.length!==1?'s':''} returned</div>`;
+      if (stmt.explain_note) {
+        html += `<div style="margin-top:8px;padding:8px 12px;background:rgba(25,167,206,0.08);border-left:3px solid var(--teal);border-radius:0 6px 6px 0;font-size:11px;color:var(--cyan)">💡 ${stmt.explain_note}</div>`;
+      }
+    } else {
+      // DDL/DML success
+      const icon = stmt.type === 'DDL' ? '🏗️' : stmt.type === 'DML' ? '✏️' : '✅';
+      html += `<div class="result-success">${icon} ${stmt.message || 'Query OK'}</div>`;
+      if (stmt.rows_affected > 0) {
+        html += `<div style="font-size:11px;color:var(--muted);margin-top:4px">Rows affected: ${stmt.rows_affected}</div>`;
+      }
+    }
+    html += `</div>`;
+  });
+
+  html += `</div>`;
+  return html;
+}
+
+// ─────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────
+function setStatus(state, text) {
+  const dot  = document.getElementById('statusDot');
+  const span = document.getElementById('statusText');
+  dot.className = `status-dot ${state}`;
+  span.textContent = text;
+  span.style.color = state === 'success' ? 'var(--green)' : state === 'error' ? 'var(--red)' : 'var(--amber)';
+}
+
+const delay = ms => new Promise(r => setTimeout(r, ms));
+
+// ─────────────────────────────────────────────────────────────
+// CONNECTION CHECK
+// ─────────────────────────────────────────────────────────────
+async function checkConn() {
+  const badge = document.getElementById('connBadge');
+  const label = document.getElementById('connText');
+  badge.className = 'badge-conn checking';
+  label.textContent = 'Checking...';
+  try {
+    const r = await fetch(`${SERVER}/api/ping`, { signal: AbortSignal.timeout(2500) });
+    const d = await r.json();
+    if (d.connected) {
+      badge.className = 'badge-conn online';
+      label.textContent = 'MySQL Connected';
+    } else {
+      badge.className = 'badge-conn offline';
+      label.textContent = 'DB Error — check password';
+    }
+  } catch {
+    badge.className = 'badge-conn offline';
+    label.textContent = 'Server Offline — run python server.py';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────────
+buildSidebar();
+selectQuery(1);
+checkConn();
+setInterval(checkConn, 6000);
+</script>
+</body>
+</html>
